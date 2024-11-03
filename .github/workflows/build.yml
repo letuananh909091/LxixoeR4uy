@@ -35,15 +35,12 @@ jobs:
       - name: Build the application
         run: npm run build
 
-      - name: Verify dist folder exists
+      - name: Verify essential files exist
         run: |
           if [ ! -d "dist" ]; then
             echo "Dist folder not found!";
             exit 1;
           fi
-
-      - name: Verify essential files exist
-        run: |
           if [ ! -f "app.py" ]; then
             echo "app.py not found!";
             exit 1;
@@ -53,20 +50,16 @@ jobs:
             exit 1;
           fi
 
-      - name: Fetch all branches
-        run: git fetch --all
+      - name: Backup dist and required files to parent directory
+        run: mkdir -p ../backup && cp -r dist app.py README.md ../backup/
 
       - name: Checkout vps branch
         uses: actions/checkout@v4
         with:
           ref: vps
 
-      - name: Sync files to vps branch
-        run: |
-          rm -rf dist
-          cp -r ../frontend/dist .
-          cp ../frontend/app.py .
-          cp ../frontend/README.md .
+      - name: Restore dist and required files from parent directory
+        run: cp -r ../backup/* ./
 
       - name: Configure Git
         run: |
