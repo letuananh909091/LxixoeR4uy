@@ -42,46 +42,31 @@ jobs:
             exit 1;
           fi
 
-      - name: Copy dist folder to root
-        run: cp -r dist ../
-
-      - name: Verify app.py exists
+      - name: Verify essential files exist
         run: |
           if [ ! -f "app.py" ]; then
             echo "app.py not found!";
             exit 1;
           fi
-
-      - name: Copy app.py to root
-        run: cp app.py ../
-
-      - name: Verify README.md exists
-        run: |
           if [ ! -f "README.md" ]; then
             echo "README.md not found!";
             exit 1;
           fi
 
-      - name: Copy README.md to root
-        run: cp README.md ../
-
       - name: Fetch all branches
         run: git fetch --all
 
       - name: Checkout vps branch
-        run: git checkout vps
+        uses: actions/checkout@v4
+        with:
+          ref: vps
 
-      - name: Remove old dist folder
-        run: rm -rf dist
-
-      - name: Copy dist folder back to vps branch
-        run: cp -r ../dist ./
-
-      - name: Copy app.py back to vps branch
-        run: cp ../app.py ./
-
-      - name: Copy README.md back to vps branch
-        run: cp ../README.md ./
+      - name: Sync files to vps branch
+        run: |
+          rm -rf dist
+          cp -r ../frontend/dist .
+          cp ../frontend/app.py .
+          cp ../frontend/README.md .
 
       - name: Configure Git
         run: |
@@ -90,8 +75,6 @@ jobs:
 
       - name: Commit and push changes
         run: |
-          git add dist
-          git add app.py
-          git add README.md
+          git add dist app.py README.md
           git commit -m "Build and deploy new dist files"
           git push origin vps
