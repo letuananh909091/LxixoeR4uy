@@ -7,7 +7,11 @@ import sqlite3
 import string
 from functools import wraps
 from json.decoder import JSONDecodeError
-
+import json
+import functools
+import subprocess
+from typing import List, Optional
+from flask import request, jsonify
 import jwt
 import requests
 from flask import (Flask, config, jsonify, redirect, render_template, request,
@@ -213,6 +217,56 @@ def token_required(f):
         return f(*args, **kwargs)
 
     return decorated
+
+
+def check_ip_middleware(f):
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        ip = (
+            request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or
+            request.headers.get('X-Real-IP') or
+            request.remote_addr
+        )
+
+        blocked_asns: List[int] = [
+            15169, 32934, 396982, 8075, 16510, 198605, 45102, 201814,
+            14061, 214961, 401115, 135377, 60068, 55720, 397373,
+            208312, 63949, 210644, 6939, 209, 51396
+        ]
+        blocked_ips: List[str] = ['95.214.55.43', '154.213.184.3']
+        blocked_user_agents: List[str] = ['facebook',
+                                          'http', '.com', 'bot', 'python', 'BotPoke']
+        blocked_countries: List[str] = ['VN']
+        user_agent: str = request.headers.get('User-Agent', '').lower()
+        if any(ua.lower() in user_agent for ua in blocked_user_agents):
+            return jsonify({'error': 'Forbidden'}), 403
+        if ip in blocked_ips:
+            return jsonify({'error': 'Forbidden'}), 403
+
+        try:
+            cmd = f'curl -s https://get.geojs.io/v1/ip/geo/{ip.strip()}.json'
+            geo_data_str = subprocess.check_output(cmd, shell=True, text=True)
+            geo_data = json.loads(geo_data_str)
+            country: Optional[str] = geo_data.get('country')
+            if country and country.upper() in blocked_countries:
+                return jsonify({'error': 'Forbidden'}), 403
+            asn: Optional[str] = geo_data.get('asn')
+            if asn and int(asn) in blocked_asns:
+                return jsonify({'error': 'Forbidden'}), 403
+
+            return f(*args, **kwargs)
+
+        except Exception as e:
+            print(f"Error checking IP: {str(e)}")
+            return f(*args, **kwargs)
+
+    return decorated_function
+
+
+@app.before_request
+@check_ip_middleware
+def before_request():
+    pass
 
 
 @app.route("/api/admin/login", methods=["POST"])
