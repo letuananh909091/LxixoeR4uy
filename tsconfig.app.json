@@ -1,25 +1,21 @@
 {
 	"compilerOptions": {
-		/* Basic Options */
-		"target": "ES2020",
+			"target": "ES2020",
 		"useDefineForClassFields": true,
 		"lib": ["ES2020", "DOM", "DOM.Iterable"],
 		"module": "ESNext",
 		"jsx": "react-jsx",
 		"noEmit": true,
-		/* Bundler Mode */
-		"moduleResolution": "bundler",
+			"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
 		"isolatedModules": true,
 		"moduleDetection": "force",
 		"skipLibCheck": true,
-		/* Linting Options */
-		"strict": true,
+			"strict": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"noFallthroughCasesInSwitch": true,
-		/* Advanced Options */
-		"baseUrl": "./",
+			"baseUrl": "./",
 		"paths": {
 			"@assets/*": ["src/assets/*"],
 			"@components/*": ["src/components/*"],

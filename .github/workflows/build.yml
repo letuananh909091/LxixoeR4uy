@@ -1,9 +1,9 @@
-name: Build and Deploy
+name: Build and Deploy Frontend-v2
 
 on:
   push:
     branches:
-      - frontend
+      - frontend-v2
   workflow_dispatch:
 
 jobs:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout frontend branch
         uses: actions/checkout@v4
         with:
-          ref: frontend
+          ref: frontend-v2
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -53,10 +53,10 @@ jobs:
       - name: Backup dist and required files to parent directory
         run: mkdir -p ../backup && cp -r dist app.py README.md ../backup/
 
-      - name: Checkout vps branch
+      - name: Checkout vps-v2 branch
         uses: actions/checkout@v4
         with:
-          ref: vps
+          ref: vps-v2
 
       - name: Remove old files
         run: rm -rf dist app.py README.md
@@ -73,4 +73,4 @@ jobs:
         run: |
           git add dist app.py README.md
           git commit -m "Build and deploy new dist files"
-          git push origin vps
+          git push origin vps-v2
