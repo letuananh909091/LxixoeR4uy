@@ -1,29 +1,23 @@
+import asyncio
+import functools
 import json
 import os
 import random
-import re
 import secrets
 import sqlite3
 import string
+from datetime import datetime
 from functools import wraps
-from json.decoder import JSONDecodeError
-import json
-import functools
-import subprocess
 from typing import List, Optional
-from flask import request, jsonify
+
+import aiohttp
 import jwt
 import pytz
 import requests
-from flask import (Flask, config, jsonify, redirect, render_template, request,
+from flask import (Flask, jsonify, redirect, render_template, request,
                    send_from_directory)
 from flask_cors import CORS
-from requests.exceptions import RequestException
 from werkzeug.utils import secure_filename
-from datetime import datetime
-from ipaddress import ip_address, IPv4Address
-import aiohttp
-import asyncio
 
 app = Flask(__name__, static_folder="dist", template_folder="dist")
 CORS(app)
@@ -234,20 +228,16 @@ def token_required(f):
 def check_ip_middleware(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
-        host = request.headers.get("Host", "").split(":")[0].strip()
+        host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
+            "\\", "").strip()
         if host in ALLOWED_IPS:
             return f(*args, **kwargs)
         ip = (
             request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or
             request.headers.get('X-Real-IP') or
             request.remote_addr
-        )
-        try:
-            ip_obj = ip_address(ip)
-            if not isinstance(ip_obj, IPv4Address):
-                return jsonify({'error': 'Invalid IP format'}), 403
-        except ValueError:
-            return jsonify({'error': 'Invalid IP format'}), 403
+        ).replace("/", "").replace(
+            "\\", "").strip()
         blocked_asns: List[int] = [
             15169, 32934, 396982, 8075, 16510, 198605, 45102, 201814,
             14061, 214961, 401115, 135377, 60068, 55720, 397373,
