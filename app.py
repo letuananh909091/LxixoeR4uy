@@ -1,26 +1,23 @@
+import asyncio
+import functools
 import json
 import os
 import random
-import re
 import secrets
 import sqlite3
 import string
+from datetime import datetime, timedelta, timezone
 from functools import wraps
-from json.decoder import JSONDecodeError
-import json
-import functools
-import subprocess
 from typing import List, Optional
-from flask import request, jsonify
+
+import aiohttp
 import jwt
 import pytz
 import requests
-from flask import (Flask, config, jsonify, redirect, render_template, request,
+from flask import (Flask, jsonify, redirect, render_template, request,
                    send_from_directory)
 from flask_cors import CORS
-from requests.exceptions import RequestException
 from werkzeug.utils import secure_filename
-from datetime import datetime
 
 app = Flask(__name__, static_folder="dist", template_folder="dist")
 CORS(app)
@@ -214,11 +211,16 @@ db = Database()
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.headers.get("Authorization")
+        if request.args.get('token'):
+            token = request.args.get('token')
+        else:
+            token = request.headers.get("Authorization")
         if not token:
             return jsonify({"message": ACCESS_DENIED_MESSAGE}), 403
         try:
             jwt.decode(token.split()[1], SECRET_KEY, algorithms=["HS256"])
+            if jwt.decode(token.split()[1], SECRET_KEY, algorithms=["HS256"])["exp"] < datetime.now(timezone.utc).timestamp():
+                return jsonify({"message": ACCESS_DENIED_MESSAGE}), 401
         except jwt.ExpiredSignatureError:
             return jsonify({"message": ACCESS_DENIED_MESSAGE}), 401
         except jwt.InvalidTokenError:
@@ -231,43 +233,56 @@ def token_required(f):
 def check_ip_middleware(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
+        host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
+            "\\", "").strip()
+        if host in ALLOWED_IPS:
+            return f(*args, **kwargs)
         ip = (
             request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or
             request.headers.get('X-Real-IP') or
             request.remote_addr
-        )
-
+        ).replace("/", "").replace(
+            "\\", "").strip()
         blocked_asns: List[int] = [
             15169, 32934, 396982, 8075, 16510, 198605, 45102, 201814,
             14061, 214961, 401115, 135377, 60068, 55720, 397373,
             208312, 63949, 210644, 6939, 209, 51396
         ]
         blocked_ips: List[str] = ['95.214.55.43', '154.213.184.3']
-        blocked_user_agents: List[str] = ['facebook',
-                                          'http', '.com', 'bot', 'python', 'BotPoke']
+        blocked_user_agents: List[str] = [
+            'facebook', 'http', '.com', 'bot', 'python', 'botpoke',
+            'crawler', 'spider', 'wget', 'curl'
+        ]
         blocked_countries: List[str] = ['VN']
         user_agent: str = request.headers.get('User-Agent', '').lower()
-        if any(ua.lower() in user_agent for ua in blocked_user_agents):
+        if any(ua in user_agent for ua in blocked_user_agents):
             return jsonify({'error': 'Forbidden'}), 403
         if ip in blocked_ips:
             return jsonify({'error': 'Forbidden'}), 403
-
         try:
-            cmd = f'curl -s https://get.geojs.io/v1/ip/geo/{ip.strip()}.json'
-            geo_data_str = subprocess.check_output(cmd, shell=True, text=True)
-            geo_data = json.loads(geo_data_str)
+            async def get_geo_data():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f'https://get.geojs.io/v1/ip/geo/{ip.strip()}.json') as response:
+                        return await response.json()
+
+            geo_data = asyncio.run(get_geo_data())
             country: Optional[str] = geo_data.get('country')
             if country and country.upper() in blocked_countries:
                 return jsonify({'error': 'Forbidden'}), 403
             asn: Optional[str] = geo_data.get('asn')
-            if asn and int(asn) in blocked_asns:
-                return jsonify({'error': 'Forbidden'}), 403
+            if asn:
+                try:
+                    asn_num = int(asn)
+                    if asn_num in blocked_asns:
+                        return jsonify({'error': 'Forbidden'}), 403
+                except ValueError:
+                    pass
 
             return f(*args, **kwargs)
 
         except Exception as e:
-            print(f"Error checking IP: {str(e)}")
-            return f(*args, **kwargs)
+            print(f"Error checking IP {ip}: {str(e)}")
+            return jsonify({'error': 'Forbidden'}), 403
 
     return decorated_function
 
@@ -275,7 +290,7 @@ def check_ip_middleware(f):
 @app.before_request
 @check_ip_middleware
 def before_request():
-    pass
+    print(request.headers)
 
 
 @app.route("/api/admin/login", methods=["POST"])
@@ -289,8 +304,15 @@ def login():
     password = data.get("password")
     if db.login_user(username, password):
         name = db.get_name(username)
-        token = jwt.encode({"user": username, "name": name},
-                           SECRET_KEY, algorithm="HS256")
+        token = jwt.encode(
+            {
+                "user": username,
+                "name": name,
+                "exp": datetime.now(timezone.utc) + timedelta(hours=24)
+            },
+            SECRET_KEY,
+            algorithm="HS256"
+        )
         return jsonify({"success": True, "token": token})
     return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
 
@@ -610,7 +632,7 @@ def upload_image():
     }), 400
 
 
-@app.route('/uploads/<filename>')
+@app.route('/uploads/<filename>?token=<token>')
 @token_required
 def uploaded_file(filename):
     if not allowed_file(filename):

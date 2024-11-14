@@ -58,6 +58,9 @@ jobs:
         with:
           ref: vps
 
+      - name: Remove old files
+        run: rm -rf dist app.py README.md
+
       - name: Restore dist and required files from parent directory
         run: cp -r ../backup/* ./
 

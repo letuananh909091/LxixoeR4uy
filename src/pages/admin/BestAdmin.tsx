@@ -1,5 +1,6 @@
 import Toast from '@components/Toast';
 import {
+	faCheck,
 	faDownload,
 	faEdit,
 	faEye,
@@ -40,6 +41,52 @@ type ImageInfo = {
 	url: string;
 };
 
+type SelectedImages = {
+	[key: string]: boolean;
+};
+
+const CustomCheckbox = ({
+	checked,
+	onChange,
+}: {
+	checked: boolean;
+	onChange: () => void;
+}) => {
+	return (
+		<div
+			className='relative h-6 w-6 transform cursor-pointer transition-transform duration-200 hover:scale-110'
+			onClick={onChange}
+		>
+			<div
+				className={`absolute flex h-full w-full items-center justify-center rounded-full border-2 shadow-md transition-all duration-300 ${
+					checked
+						? 'border-gray-600 bg-gray-600 shadow-gray-400'
+						: 'border-gray-400 bg-white hover:border-gray-500 hover:shadow-gray-300'
+				}`}
+			>
+				<div
+					className={`transform transition-all duration-300 ${
+						checked ? 'scale-100' : 'scale-0'
+					}`}
+				>
+					<FontAwesomeIcon
+						icon={faCheck}
+						className={`text-white transition-all duration-300 ${
+							checked ? 'opacity-100' : 'opacity-0'
+						}`}
+						size='xs'
+					/>
+				</div>
+			</div>
+			<div
+				className={`absolute -inset-1 rounded-full bg-gray-600 opacity-0 transition-opacity duration-300 ${
+					checked ? 'opacity-10' : 'opacity-0'
+				}`}
+			/>
+		</div>
+	);
+};
+
 const BestAdmin = () => {
 	const [activeTab, setActiveTab] = useState<'vps' | 'profile' | 'images'>(
 		'vps',
@@ -75,6 +122,8 @@ const BestAdmin = () => {
 		isOpen: false,
 		filename: '',
 	});
+	const [selectedImages, setSelectedImages] = useState<SelectedImages>({});
+	const [selectAll, setSelectAll] = useState(false);
 
 	const sortUsers = (users: VPSUser[]) => {
 		return [...users].sort((a, b) => {
@@ -334,16 +383,21 @@ const BestAdmin = () => {
 
 	const confirmDeleteImage = async () => {
 		try {
-			await axios.post(
-				'/api/delete-image',
-				{ filename: deleteImageConfirm.filename },
-				{ headers: { Authorization: `Bearer ${token}` } },
-			);
+			const filenames = deleteImageConfirm.filename.split(', ');
+			for (const filename of filenames) {
+				await axios.post(
+					'/api/delete-image',
+					{ filename },
+					{ headers: { Authorization: `Bearer ${token}` } },
+				);
+			}
 			setDeleteImageConfirm({ isOpen: false, filename: '' });
+			setSelectedImages({});
+			setSelectAll(false);
 			fetchImages();
 			setToast('Xóa hình ảnh thành công');
 		} catch (error) {
-			console.error('Failed to delete image:', error);
+			console.error('Failed to delete images:', error);
 			setToast('Không thể xóa hình ảnh');
 		}
 	};
@@ -377,6 +431,65 @@ const BestAdmin = () => {
 			fetchImages();
 		}
 	}, [activeTab, fetchImages]);
+
+	const handleSelectAll = () => {
+		const newSelectAll = !selectAll;
+		setSelectAll(newSelectAll);
+
+		const newSelectedImages: SelectedImages = {};
+		images.forEach((image) => {
+			newSelectedImages[image.filename] = newSelectAll;
+		});
+		setSelectedImages(newSelectedImages);
+	};
+
+	const handleSelectImage = (filename: string) => {
+		setSelectedImages((prev) => {
+			const newSelectedImages = {
+				...prev,
+				[filename]: !prev[filename],
+			};
+
+			// Check if all images are selected using the new state
+			const allSelected = images.every(
+				(image) => newSelectedImages[image.filename],
+			);
+
+			setSelectAll(allSelected);
+			return newSelectedImages;
+		});
+	};
+
+	const handleBulkDownload = async () => {
+		const selectedFiles = Object.entries(selectedImages)
+			.filter(([, isSelected]) => isSelected)
+			.map(([filename]) => filename);
+
+		if (selectedFiles.length === 0) {
+			setToast('Vui lòng chọn ít nhất một hình ảnh');
+			return;
+		}
+
+		for (const filename of selectedFiles) {
+			await handleDownloadImage(filename);
+		}
+	};
+
+	const handleBulkDelete = () => {
+		const selectedFiles = Object.entries(selectedImages)
+			.filter(([, isSelected]) => isSelected)
+			.map(([filename]) => filename);
+
+		if (selectedFiles.length === 0) {
+			setToast('Vui lòng chọn ít nhất một hình ảnh');
+			return;
+		}
+
+		setDeleteImageConfirm({
+			isOpen: true,
+			filename: selectedFiles.join(', '),
+		});
+	};
 
 	return (
 		<div className='hidden min-h-screen bg-gray-100 sm:block'>
@@ -742,9 +855,34 @@ const BestAdmin = () => {
 					</div>
 				) : (
 					<div className='rounded-lg bg-white p-6 shadow'>
-						<h2 className='mb-4 text-lg font-semibold'>
-							Quản Lý Hình Ảnh
-						</h2>
+						<div className='mb-6 flex items-center justify-between'>
+							<h2 className='text-lg font-semibold'>
+								Quản Lý Hình Ảnh
+							</h2>
+							<div className='flex gap-4'>
+								<button
+									onClick={handleBulkDownload}
+									className='inline-flex items-center rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700'
+								>
+									<FontAwesomeIcon
+										icon={faDownload}
+										className='mr-2'
+									/>
+									Tải xuống đã chọn
+								</button>
+								<button
+									onClick={handleBulkDelete}
+									className='inline-flex items-center rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700'
+								>
+									<FontAwesomeIcon
+										icon={faTrash}
+										className='mr-2'
+									/>
+									Xóa đã chọn
+								</button>
+							</div>
+						</div>
+
 						<div className='mb-6'>
 							<div className='relative mb-4 flex-1'>
 								<FontAwesomeIcon
@@ -760,6 +898,15 @@ const BestAdmin = () => {
 									placeholder='Tìm kiếm hình ảnh...'
 									className='w-full rounded-lg border-gray-400 py-2.5 pl-10 pr-4 text-sm ring-1 ring-gray-400 transition-colors duration-200 ease-in-out placeholder:text-gray-400 focus:ring-gray-800 focus:ring-offset-2'
 								/>
+							</div>
+							<div className='flex items-center'>
+								<CustomCheckbox
+									checked={selectAll}
+									onChange={handleSelectAll}
+								/>
+								<span className='ml-2 text-sm text-gray-600'>
+									Chọn tất cả
+								</span>
 							</div>
 						</div>
 
@@ -781,9 +928,27 @@ const BestAdmin = () => {
 										key={image.filename}
 										className='group relative flex flex-col rounded-lg bg-gray-50 p-2 shadow-sm transition-shadow hover:shadow-md'
 									>
+										<div className='absolute right-3 top-3 z-20'>
+											<CustomCheckbox
+												checked={
+													selectedImages[
+														image.filename
+													] || false
+												}
+												onChange={() =>
+													handleSelectImage(
+														image.filename,
+													)
+												}
+											/>
+										</div>
 										<div className='aspect-w-1 aspect-h-1 relative mb-2 w-full overflow-hidden rounded-lg bg-gray-200'>
 											<img
-												src={image.url}
+												src={
+													image.url +
+													'?token=' +
+													token
+												}
 												alt={image.filename}
 												className='h-full w-full object-cover object-center'
 											/>
@@ -845,7 +1010,7 @@ const BestAdmin = () => {
 										),
 									}).map((_, index) => (
 										<button
-											key={index}
+											key={`page-${index + 1}`}
 											onClick={() =>
 												setCurrentPage(index + 1)
 											}
