@@ -1,8 +1,10 @@
 import Toast from '@components/Toast';
 import {
+	faDownload,
 	faEdit,
 	faEye,
 	faEyeSlash,
+	faImage,
 	faPlus,
 	faSearch,
 	faSignOutAlt,
@@ -32,8 +34,16 @@ type DeleteConfirmModal = {
 type SortField = 'name' | 'username' | 'stt' | 'ip';
 type SortDirection = 'asc' | 'desc';
 
+type ImageInfo = {
+	created: string;
+	filename: string;
+	url: string;
+};
+
 const BestAdmin = () => {
-	const [activeTab, setActiveTab] = useState<'vps' | 'profile'>('vps');
+	const [activeTab, setActiveTab] = useState<'vps' | 'profile' | 'images'>(
+		'vps',
+	);
 	const [users, setUsers] = useState<VPSUser[]>([]);
 	const [newVPSName, setNewVPSName] = useState('');
 	const [myUsername, setMyUsername] = useState('');
@@ -54,6 +64,17 @@ const BestAdmin = () => {
 	const [vpsCount, setVpsCount] = useState(0);
 	const [showMyPassword, setShowMyPassword] = useState(false);
 	const [showEditPassword, setShowEditPassword] = useState(false);
+	const [images, setImages] = useState<ImageInfo[]>([]);
+	const [imageSearchTerm, setImageSearchTerm] = useState('');
+	const [currentPage, setCurrentPage] = useState(1);
+	const [imagesPerPage] = useState(12);
+	const [deleteImageConfirm, setDeleteImageConfirm] = useState<{
+		isOpen: boolean;
+		filename: string;
+	}>({
+		isOpen: false,
+		filename: '',
+	});
 
 	const sortUsers = (users: VPSUser[]) => {
 		return [...users].sort((a, b) => {
@@ -295,6 +316,68 @@ const BestAdmin = () => {
 		}
 	};
 
+	const fetchImages = useCallback(async () => {
+		try {
+			const response = await axios.get('/api/get-all-images', {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			setImages(response.data);
+		} catch (error) {
+			console.error('Failed to fetch images:', error);
+			setToast('Không thể tải hình ảnh');
+		}
+	}, [token]);
+
+	const handleDeleteImage = async (filename: string) => {
+		setDeleteImageConfirm({ isOpen: true, filename });
+	};
+
+	const confirmDeleteImage = async () => {
+		try {
+			await axios.post(
+				'/api/delete-image',
+				{ filename: deleteImageConfirm.filename },
+				{ headers: { Authorization: `Bearer ${token}` } },
+			);
+			setDeleteImageConfirm({ isOpen: false, filename: '' });
+			fetchImages();
+			setToast('Xóa hình ảnh thành công');
+		} catch (error) {
+			console.error('Failed to delete image:', error);
+			setToast('Không thể xóa hình ảnh');
+		}
+	};
+
+	const handleDownloadImage = async (filename: string) => {
+		try {
+			const response = await axios.get(`/uploads/${filename}`, {
+				headers: { Authorization: `Bearer ${token}` },
+				responseType: 'blob',
+			});
+
+			// Create download link
+			const url = window.URL.createObjectURL(new Blob([response.data]));
+			const link = document.createElement('a');
+			link.href = url;
+			link.setAttribute('download', filename);
+			document.body.appendChild(link);
+			link.click();
+
+			// Cleanup
+			link.parentNode?.removeChild(link);
+			window.URL.revokeObjectURL(url);
+		} catch (error) {
+			console.error('Failed to download image:', error);
+			setToast('Không thể tải hình ảnh');
+		}
+	};
+
+	useEffect(() => {
+		if (activeTab === 'images') {
+			fetchImages();
+		}
+	}, [activeTab, fetchImages]);
+
 	return (
 		<div className='hidden min-h-screen bg-gray-100 sm:block'>
 			<nav className='bg-white shadow-lg'>
@@ -328,6 +411,20 @@ const BestAdmin = () => {
 									className='mr-2'
 								/>
 								Tài Khoản
+							</button>
+							<button
+								onClick={() => setActiveTab('images')}
+								className={`inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium ${
+									activeTab === 'images'
+										? 'border-gray-700 text-gray-900'
+										: 'border-transparent text-gray-500 hover:text-gray-700'
+								}`}
+							>
+								<FontAwesomeIcon
+									icon={faImage}
+									className='mr-2'
+								/>
+								Hình Ảnh
 							</button>
 						</div>
 						<div className='flex items-center'>
@@ -584,7 +681,7 @@ const BestAdmin = () => {
 							</div>
 						</div>
 					</div>
-				) : (
+				) : activeTab === 'profile' ? (
 					<div className='rounded-lg bg-white p-6 shadow'>
 						<h2 className='mb-4 text-lg font-semibold'>
 							Thay Đổi Thông Tin Tài Khoản
@@ -642,6 +739,171 @@ const BestAdmin = () => {
 								Lưu Thay Đổi
 							</button>
 						</div>
+					</div>
+				) : (
+					<div className='rounded-lg bg-white p-6 shadow'>
+						<h2 className='mb-4 text-lg font-semibold'>
+							Quản Lý Hình Ảnh
+						</h2>
+						<div className='mb-6'>
+							<div className='relative mb-4 flex-1'>
+								<FontAwesomeIcon
+									icon={faSearch}
+									className='absolute left-3 top-1/2 -translate-y-1/2 text-gray-400'
+								/>
+								<input
+									type='text'
+									value={imageSearchTerm}
+									onChange={(e) =>
+										setImageSearchTerm(e.target.value)
+									}
+									placeholder='Tìm kiếm hình ảnh...'
+									className='w-full rounded-lg border-gray-400 py-2.5 pl-10 pr-4 text-sm ring-1 ring-gray-400 transition-colors duration-200 ease-in-out placeholder:text-gray-400 focus:ring-gray-800 focus:ring-offset-2'
+								/>
+							</div>
+						</div>
+
+						<div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
+							{images
+								.filter((img) =>
+									img.filename
+										.toLowerCase()
+										.includes(
+											imageSearchTerm.toLowerCase(),
+										),
+								)
+								.slice(
+									(currentPage - 1) * imagesPerPage,
+									currentPage * imagesPerPage,
+								)
+								.map((image) => (
+									<div
+										key={image.filename}
+										className='group relative flex flex-col rounded-lg bg-gray-50 p-2 shadow-sm transition-shadow hover:shadow-md'
+									>
+										<div className='aspect-w-1 aspect-h-1 relative mb-2 w-full overflow-hidden rounded-lg bg-gray-200'>
+											<img
+												src={image.url}
+												alt={image.filename}
+												className='h-full w-full object-cover object-center'
+											/>
+											<div className='absolute inset-0 flex items-center justify-center gap-4 bg-black bg-opacity-50 opacity-0 transition-opacity group-hover:opacity-100'>
+												<button
+													onClick={() =>
+														handleDownloadImage(
+															image.filename,
+														)
+													}
+													className='p-2 text-white transition-colors hover:text-gray-300'
+													title='Tải xuống'
+												>
+													<FontAwesomeIcon
+														icon={faDownload}
+														size='lg'
+													/>
+												</button>
+												<button
+													onClick={() =>
+														handleDeleteImage(
+															image.filename,
+														)
+													}
+													className='p-2 text-white transition-colors hover:text-gray-300'
+													title='Xóa'
+												>
+													<FontAwesomeIcon
+														icon={faTrash}
+														size='lg'
+													/>
+												</button>
+											</div>
+										</div>
+										<div className='flex flex-col space-y-1 px-1'>
+											<p
+												className='truncate text-sm font-medium text-gray-700'
+												title={image.filename}
+											>
+												{image.filename}
+											</p>
+											<div className='flex flex-col space-y-0.5 text-xs text-gray-500'>
+												<p title={image.created}>
+													Ngày tạo: {image.created}
+												</p>
+											</div>
+										</div>
+									</div>
+								))}
+						</div>
+
+						{/* Pagination */}
+						{Math.ceil(images.length / imagesPerPage) > 1 && (
+							<div className='mt-6 flex justify-center'>
+								<nav className='flex items-center space-x-2'>
+									{Array.from({
+										length: Math.ceil(
+											images.length / imagesPerPage,
+										),
+									}).map((_, index) => (
+										<button
+											key={index}
+											onClick={() =>
+												setCurrentPage(index + 1)
+											}
+											className={`rounded-md px-3 py-1 ${
+												currentPage === index + 1
+													? 'bg-gray-600 text-white'
+													: 'text-gray-600 hover:bg-gray-100'
+											}`}
+										>
+											{index + 1}
+										</button>
+									))}
+								</nav>
+							</div>
+						)}
+
+						{images.length === 0 && (
+							<div className='flex flex-col items-center justify-center py-12 text-gray-500'>
+								<FontAwesomeIcon
+									icon={faImage}
+									className='mb-4 text-4xl'
+								/>
+								<p className='text-lg'>Chưa có hình ảnh nào</p>
+							</div>
+						)}
+
+						{deleteImageConfirm.isOpen && (
+							<div className='fixed inset-0 flex items-center justify-center bg-gray-500 bg-opacity-75'>
+								<div className='w-full max-w-md rounded-lg bg-white p-6'>
+									<h3 className='mb-4 text-lg font-semibold text-gray-900'>
+										Xác nhận xóa
+									</h3>
+									<p className='mb-6 text-gray-600'>
+										Bạn có chắc chắn muốn xóa hình ảnh "
+										{deleteImageConfirm.filename}"?
+									</p>
+									<div className='flex justify-end space-x-4'>
+										<button
+											onClick={() =>
+												setDeleteImageConfirm({
+													isOpen: false,
+													filename: '',
+												})
+											}
+											className='rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50'
+										>
+											Hủy
+										</button>
+										<button
+											onClick={confirmDeleteImage}
+											className='rounded-md border border-transparent bg-gray-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-700'
+										>
+											Xóa
+										</button>
+									</div>
+								</div>
+							</div>
+						)}
 					</div>
 				)}
 			</div>

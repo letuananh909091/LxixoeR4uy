@@ -13,14 +13,21 @@ import subprocess
 from typing import List, Optional
 from flask import request, jsonify
 import jwt
+import pytz
 import requests
 from flask import (Flask, config, jsonify, redirect, render_template, request,
                    send_from_directory)
 from flask_cors import CORS
 from requests.exceptions import RequestException
+from werkzeug.utils import secure_filename
+from datetime import datetime
 
 app = Flask(__name__, static_folder="dist", template_folder="dist")
 CORS(app)
+
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
 def generate_or_load_secret_key():
@@ -35,8 +42,10 @@ def generate_or_load_secret_key():
         return key
 
 
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 SECRET_KEY = generate_or_load_secret_key()
 PUBLIC_IP = requests.get("https://api.ipify.org").text
+ALLOWED_IPS = {'127.0.0.1', 'localhost', PUBLIC_IP}
 DEFAULT_VALUE = "Không có"
 ACCESS_DENIED_MESSAGE = "Không có quyền truy cập"
 SUCCESS_MESSAGE = "Thành công"
@@ -273,7 +282,7 @@ def before_request():
 def login():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     data = request.get_json()
     username = data.get("username")
@@ -290,7 +299,12 @@ def login():
 def get_config():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
-    if host != PUBLIC_IP:
+    print(host)
+    if host == 'localhost' or host == '127.0.0.1':
+        host = PUBLIC_IP
+        config = db.get_config_by_domain("127.0.0.1")
+        return jsonify(config)
+    if host not in ALLOWED_IPS:
         if not db.is_correct_domain(host):
             return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
         config = db.get_config_by_domain(host)
@@ -317,7 +331,7 @@ def get_telegram_config():
     data = request.get_json()
     chat_id = data.get("chat_id")
     telegram_token = data.get("token")
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     token = request.headers.get("Authorization")
     name = jwt.decode(token.split()[1], SECRET_KEY,
@@ -331,7 +345,7 @@ def get_telegram_config():
 def update_config():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     try:
         new_config = request.get_json()
@@ -354,7 +368,7 @@ def update_config():
 def get_domains():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     token = request.headers.get("Authorization")
     name = jwt.decode(token.split()[1], SECRET_KEY,
@@ -367,7 +381,7 @@ def get_domains():
 def add_domain():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     domain = request.get_json().get("domain")
     if not domain:
@@ -385,7 +399,7 @@ def delete_domain():
     domain = request.get_json().get("domain")
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     if not domain:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 400
@@ -404,7 +418,7 @@ def change_password():
     vps_name = request.get_json().get("name", None)
     username = request.get_json().get("username")
     password = request.get_json().get("password")
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     token = request.headers.get("Authorization")
     name = jwt.decode(token.split()[1], SECRET_KEY,
@@ -425,7 +439,7 @@ def get_info():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
     vps_name = request.get_json().get("name", None)
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     token = request.headers.get("Authorization")
     name = jwt.decode(token.split()[1], SECRET_KEY,
@@ -440,7 +454,7 @@ def get_info():
 def check_token():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     token = request.headers.get("Authorization")
     name = jwt.decode(token.split()[1], SECRET_KEY,
@@ -455,7 +469,7 @@ def check_token():
 def get_list_user():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     token = request.headers.get("Authorization")
     name = jwt.decode(token.split()[1], SECRET_KEY,
@@ -471,7 +485,7 @@ def add_user():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
     vps_name = request.get_json().get("name")
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     token = request.headers.get("Authorization")
     name = jwt.decode(token.split()[1], SECRET_KEY,
@@ -488,7 +502,7 @@ def delete_user():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
     vps_name = request.get_json().get("name")
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
     token = request.headers.get("Authorization")
     name = jwt.decode(token.split()[1], SECRET_KEY,
@@ -510,7 +524,7 @@ def handle_error(error):
 def admin():
     host = request.headers.get("Host").split(":")[0].replace("/", "").replace(
         "\\", "").strip()
-    if host != PUBLIC_IP:
+    if host not in ALLOWED_IPS:
         return jsonify({"message": ACCESS_DENIED_MESSAGE}), 403
     return render_template(INDEX_TEMPLATE)
 
@@ -519,7 +533,7 @@ def admin():
 def index():
     host = request.headers.get("Host", "").split(
         ":")[0].replace("/", "").replace("\\", "").strip()
-    if host == PUBLIC_IP:
+    if host in ALLOWED_IPS:
         return redirect('/admin')
     if not db.is_correct_domain(host):
         return jsonify({"message": ACCESS_DENIED_MESSAGE}), 403
@@ -536,7 +550,7 @@ def serve_static_or_index(path):
 def catch_all(path):
     host = request.headers.get("Host", "").split(
         ":")[0].replace("/", "").replace("\\", "").strip()
-    if host == PUBLIC_IP:
+    if host in ALLOWED_IPS:
         if os.path.exists(os.path.join(app.static_folder, path)):
             return send_from_directory(app.static_folder, path)
         if 'admin' in path:
@@ -547,6 +561,101 @@ def catch_all(path):
         return jsonify({"message": ACCESS_DENIED_MESSAGE}), 403
 
     return serve_static_or_index(path)
+
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def get_unique_filename(filename):
+    vn_timezone = pytz.timezone('Asia/Ho_Chi_Minh')
+    timestamp = datetime.now(vn_timezone).strftime('%H%M%S_%d%m%Y')
+    _, ext = os.path.splitext(filename)
+    return f"ovf_{timestamp}{ext}"
+
+
+@app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'message': 'No image file provided'}), 400
+
+    file = request.files['image']
+
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No selected file'}), 400
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        unique_filename = get_unique_filename(filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+
+        try:
+            file.save(file_path)
+            image_url = f"/uploads/{unique_filename}"
+            return jsonify({
+                'success': True,
+                'message': SUCCESS_MESSAGE,
+                'url': image_url
+            })
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'message': f"Error saving file: {str(e)}"
+            }), 500
+
+    return jsonify({
+        'success': False,
+        'message': 'File type not allowed'
+    }), 400
+
+
+@app.route('/uploads/<filename>')
+@token_required
+def uploaded_file(filename):
+    if not allowed_file(filename):
+        return jsonify({"message": ACCESS_DENIED_MESSAGE}), 403
+    try:
+        host = request.headers.get("Host", "").split(
+            ":")[0].replace("/", "").replace("\\", "").strip()
+        if host not in ALLOWED_IPS:
+            return jsonify({"message": ACCESS_DENIED_MESSAGE}), 403
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    except Exception:
+        return jsonify({"message": ACCESS_DENIED_MESSAGE}), 404
+
+
+@app.route('/api/delete-image', methods=['POST'])
+@token_required
+def delete_image():
+    filename = request.get_json().get('filename')
+    if not filename:
+        return jsonify({'success': False, 'message': 'No filename provided'}), 400
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        return jsonify({'success': True, 'message': SUCCESS_MESSAGE})
+    return jsonify({'success': False, 'message': 'File not found'}), 404
+
+
+@app.route('/api/get-all-images', methods=['GET'])
+@token_required
+def get_all_images():
+    vn_timezone = pytz.timezone('Asia/Ho_Chi_Minh')
+    images = []
+
+    for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+        if allowed_file(filename):
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            created_time = datetime.fromtimestamp(os.path.getctime(
+                file_path), vn_timezone).strftime('%H:%M:%S %d-%m-%Y')
+            images.append({
+                'filename': filename,
+                'url': f'/uploads/{filename}',
+                'created': created_time
+            })
+
+    return jsonify(images)
 
 
 if __name__ == "__main__":

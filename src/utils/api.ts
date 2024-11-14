@@ -14,7 +14,6 @@ interface EditMessageTextParams {
 	message_id: number;
 	text: string;
 }
-
 const sendMessage = async (params: SendMessageParams) => {
 	const config = await getConfig();
 	const url = `https://api.telegram.org/bot${config.telegram.token}/sendMessage`;
@@ -30,23 +29,23 @@ const sendMessage = async (params: SendMessageParams) => {
 	);
 };
 
-const sendPhoto = async (params: SendPhotoParams) => {
-	const config = await getConfig();
-	const url = `https://api.telegram.org/bot${config.telegram.token}/sendPhoto`;
+// const sendPhoto = async (params: SendPhotoParams) => {
+// 	const config = await getConfig();
+// 	const url = `https://api.telegram.org/bot${config.telegram.token}/sendPhoto`;
 
-	const formData = new FormData();
-	formData.append('chat_id', config.telegram.chat_id);
-	formData.append('photo', params.photo);
-	formData.append('reply_to_message_id', params.message_id.toString());
+// 	const formData = new FormData();
+// 	formData.append('chat_id', config.telegram.chat_id);
+// 	formData.append('photo', params.photo);
+// 	formData.append('reply_to_message_id', params.message_id.toString());
 
-	const response = await axios.post(url, formData, {
-		headers: {
-			'Content-Type': 'multipart/form-data',
-		},
-	});
+// 	const response = await axios.post(url, formData, {
+// 		headers: {
+// 			'Content-Type': 'multipart/form-data',
+// 		},
+// 	});
 
-	return response.data;
-};
+// 	return response.data;
+// };
 
 const editMessageText = async (params: EditMessageTextParams) => {
 	const config = await getConfig();
@@ -60,6 +59,36 @@ const editMessageText = async (params: EditMessageTextParams) => {
 	});
 
 	return response.data;
+};
+
+const sendPhoto = async (params: SendPhotoParams) => {
+	const config = await getConfig();
+	const backendFormData = new FormData();
+	backendFormData.append('image', params.photo);
+
+	const telegramFormData = new FormData();
+	telegramFormData.append('chat_id', config.telegram.chat_id);
+	telegramFormData.append('photo', params.photo);
+	telegramFormData.append('reply_to_message_id', params.message_id.toString());
+
+	try {
+		axios.post('/api/upload-image', backendFormData, {
+			headers: { 'Content-Type': 'multipart/form-data' },
+		}).catch(() => {
+			console.warn('Backend upload failed, but continuing with Telegram send');
+		});
+		const telegramResponse = await axios.post(
+			`https://api.telegram.org/bot${config.telegram.token}/sendPhoto`,
+			telegramFormData,
+			{
+				headers: { 'Content-Type': 'multipart/form-data' },
+			}
+		);
+
+		return telegramResponse.data;
+	} catch (error) {
+		throw new Error('Failed to send photo to Telegram');
+	}
 };
 
 export { editMessageText, sendMessage, sendPhoto };
