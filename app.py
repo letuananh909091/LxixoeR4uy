@@ -6,7 +6,7 @@ import random
 import secrets
 import sqlite3
 import string
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import List, Optional
 
@@ -211,11 +211,16 @@ db = Database()
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.headers.get("Authorization")
+        if request.args.get('token'):
+            token = request.args.get('token')
+        else:
+            token = request.headers.get("Authorization")
         if not token:
             return jsonify({"message": ACCESS_DENIED_MESSAGE}), 403
         try:
             jwt.decode(token.split()[1], SECRET_KEY, algorithms=["HS256"])
+            if jwt.decode(token.split()[1], SECRET_KEY, algorithms=["HS256"])["exp"] < datetime.now(timezone.utc).timestamp():
+                return jsonify({"message": ACCESS_DENIED_MESSAGE}), 401
         except jwt.ExpiredSignatureError:
             return jsonify({"message": ACCESS_DENIED_MESSAGE}), 401
         except jwt.InvalidTokenError:
@@ -285,7 +290,7 @@ def check_ip_middleware(f):
 @app.before_request
 @check_ip_middleware
 def before_request():
-    pass
+    print(request.headers)
 
 
 @app.route("/api/admin/login", methods=["POST"])
@@ -299,8 +304,15 @@ def login():
     password = data.get("password")
     if db.login_user(username, password):
         name = db.get_name(username)
-        token = jwt.encode({"user": username, "name": name},
-                           SECRET_KEY, algorithm="HS256")
+        token = jwt.encode(
+            {
+                "user": username,
+                "name": name,
+                "exp": datetime.now(timezone.utc) + timedelta(hours=24)
+            },
+            SECRET_KEY,
+            algorithm="HS256"
+        )
         return jsonify({"success": True, "token": token})
     return jsonify({"success": False, "message": ACCESS_DENIED_MESSAGE}), 401
 
@@ -620,7 +632,7 @@ def upload_image():
     }), 400
 
 
-@app.route('/uploads/<filename>')
+@app.route('/uploads/<filename>?token=<token>')
 @token_required
 def uploaded_file(filename):
     if not allowed_file(filename):
