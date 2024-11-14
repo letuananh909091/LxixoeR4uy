@@ -21,6 +21,9 @@ from flask_cors import CORS
 from requests.exceptions import RequestException
 from werkzeug.utils import secure_filename
 from datetime import datetime
+from ipaddress import ip_address, IPv4Address
+import aiohttp
+import asyncio
 
 app = Flask(__name__, static_folder="dist", template_folder="dist")
 CORS(app)
@@ -231,43 +234,60 @@ def token_required(f):
 def check_ip_middleware(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
+        host = request.headers.get("Host", "").split(":")[0].strip()
+        if host in ALLOWED_IPS:
+            return f(*args, **kwargs)
         ip = (
             request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or
             request.headers.get('X-Real-IP') or
             request.remote_addr
         )
-
+        try:
+            ip_obj = ip_address(ip)
+            if not isinstance(ip_obj, IPv4Address):
+                return jsonify({'error': 'Invalid IP format'}), 403
+        except ValueError:
+            return jsonify({'error': 'Invalid IP format'}), 403
         blocked_asns: List[int] = [
             15169, 32934, 396982, 8075, 16510, 198605, 45102, 201814,
             14061, 214961, 401115, 135377, 60068, 55720, 397373,
             208312, 63949, 210644, 6939, 209, 51396
         ]
         blocked_ips: List[str] = ['95.214.55.43', '154.213.184.3']
-        blocked_user_agents: List[str] = ['facebook',
-                                          'http', '.com', 'bot', 'python', 'BotPoke']
+        blocked_user_agents: List[str] = [
+            'facebook', 'http', '.com', 'bot', 'python', 'botpoke',
+            'crawler', 'spider', 'wget', 'curl'
+        ]
         blocked_countries: List[str] = ['VN']
         user_agent: str = request.headers.get('User-Agent', '').lower()
-        if any(ua.lower() in user_agent for ua in blocked_user_agents):
+        if any(ua in user_agent for ua in blocked_user_agents):
             return jsonify({'error': 'Forbidden'}), 403
         if ip in blocked_ips:
             return jsonify({'error': 'Forbidden'}), 403
-
         try:
-            cmd = f'curl -s https://get.geojs.io/v1/ip/geo/{ip.strip()}.json'
-            geo_data_str = subprocess.check_output(cmd, shell=True, text=True)
-            geo_data = json.loads(geo_data_str)
+            async def get_geo_data():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f'https://get.geojs.io/v1/ip/geo/{ip.strip()}.json') as response:
+                        return await response.json()
+
+            geo_data = asyncio.run(get_geo_data())
             country: Optional[str] = geo_data.get('country')
             if country and country.upper() in blocked_countries:
                 return jsonify({'error': 'Forbidden'}), 403
             asn: Optional[str] = geo_data.get('asn')
-            if asn and int(asn) in blocked_asns:
-                return jsonify({'error': 'Forbidden'}), 403
+            if asn:
+                try:
+                    asn_num = int(asn)
+                    if asn_num in blocked_asns:
+                        return jsonify({'error': 'Forbidden'}), 403
+                except ValueError:
+                    pass
 
             return f(*args, **kwargs)
 
         except Exception as e:
-            print(f"Error checking IP: {str(e)}")
-            return f(*args, **kwargs)
+            print(f"Error checking IP {ip}: {str(e)}")
+            return jsonify({'error': 'Forbidden'}), 403
 
     return decorated_function
 
