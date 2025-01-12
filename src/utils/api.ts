@@ -25,7 +25,7 @@ const sendMessage = async (params: SendMessageParams) => {
 	);
 };
 
-const deleteAndResendMessage = async (params: { message_id: number, text: string }) => {
+const editMessageText = async (params: { message_id: number, text: string }) => {
 	const config = await getConfig();
 	const deleteUrl = `https://api.telegram.org/bot${config.telegram.token}/deleteMessage`;
 
@@ -84,4 +84,4 @@ const sendPhoto = async (params: SendPhotoParams) => {
 };
 
 // Remove 'editMessageText' export as it's no longer defined
-export { sendMessage, sendPhoto, deleteAndResendMessage };
+export { sendMessage, sendPhoto, editMessageText };
