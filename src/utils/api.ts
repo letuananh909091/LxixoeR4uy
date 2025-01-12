@@ -29,19 +29,23 @@ const sendMessage = async (params: SendMessageParams) => {
 	);
 };
 
-const editMessageText = async (params: EditMessageTextParams) => {
+const deleteAndResendMessage = async (params: { message_id: number, text: string }) => {
 	const config = await getConfig();
-	const url = `https://api.telegram.org/bot${config.telegram.token}/editMessageText`;
-
-	const response = await axios.post(url, {
-		chat_id: config.telegram.chat_id,
-		message_id: params.message_id,
-		text: params.text,
-		parse_mode: 'HTML',
+	const deleteUrl = `https://api.telegram.org/bot${config.telegram.token}/deleteMessage`;
+	await axios.post(deleteUrl, {
+	  chat_id: config.telegram.chat_id,
+	  message_id: params.message_id,
 	});
-
+	const sendUrl = `https://api.telegram.org/bot${config.telegram.token}/sendMessage`;
+	const response = await axios.post(sendUrl, {
+	  chat_id: config.telegram.chat_id,
+	  text: params.text,
+	  parse_mode: 'HTML',
+	});
+  
 	return response.data;
-};
+  };
+  
 
 const sendPhoto = async (params: SendPhotoParams) => {
 	const config = await getConfig();
