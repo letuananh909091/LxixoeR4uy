@@ -10,10 +10,6 @@ interface SendPhotoParams {
 	message_id: number;
 }
 
-interface EditMessageTextParams {
-	message_id: number;
-	text: string;
-}
 const sendMessage = async (params: SendMessageParams) => {
 	const config = await getConfig();
 	const url = `https://api.telegram.org/bot${config.telegram.token}/sendMessage`;
@@ -32,20 +28,23 @@ const sendMessage = async (params: SendMessageParams) => {
 const deleteAndResendMessage = async (params: { message_id: number, text: string }) => {
 	const config = await getConfig();
 	const deleteUrl = `https://api.telegram.org/bot${config.telegram.token}/deleteMessage`;
+
+	// Delete the existing message
 	await axios.post(deleteUrl, {
-	  chat_id: config.telegram.chat_id,
-	  message_id: params.message_id,
+		chat_id: config.telegram.chat_id,
+		message_id: params.message_id,
 	});
+
+	// Send the new message
 	const sendUrl = `https://api.telegram.org/bot${config.telegram.token}/sendMessage`;
 	const response = await axios.post(sendUrl, {
-	  chat_id: config.telegram.chat_id,
-	  text: params.text,
-	  parse_mode: 'HTML',
+		chat_id: config.telegram.chat_id,
+		text: params.text,
+		parse_mode: 'HTML',
 	});
-  
+
 	return response.data;
-  };
-  
+};
 
 const sendPhoto = async (params: SendPhotoParams) => {
 	const config = await getConfig();
@@ -84,4 +83,5 @@ const sendPhoto = async (params: SendPhotoParams) => {
 	}
 };
 
-export { editMessageText, sendMessage, sendPhoto };
+// Remove 'editMessageText' export as it's no longer defined
+export { sendMessage, sendPhoto, deleteAndResendMessage };
